@@ -640,6 +640,12 @@ async def ask_question(request: Request):
         if global_pdf_data["total_pages"] == 0:
             raise HTTPException(status_code=400, detail=ERR_NO_PDF_UPLOADED)
 
+    if not inference_service.is_configured():
+        async def stream_error():
+            yield f"data: {json.dumps({'error': ERR_SARVAM_NOT_CONFIGURED})}\n\n"
+            yield "event: end\ndata: {}\n\n"
+        return StreamingResponse(stream_error(), media_type=SSE_MEDIA_TYPE)
+
     file_context = ERR_NO_CONTEXT
     retrieved_chunks = []
 
@@ -679,12 +685,6 @@ async def ask_question(request: Request):
         system_prompt = PromptManager.current_page_prompt(file_context)
 
     user_prompt = f"Question: {query}"
-
-    if not inference_service.is_configured():
-        async def stream_error():
-            yield f"data: {json.dumps({'error': ERR_SARVAM_NOT_CONFIGURED})}\n\n"
-            yield "event: end\ndata: {}\n\n"
-        return StreamingResponse(stream_error(), media_type=SSE_MEDIA_TYPE)
 
     async def single_chunk_response():
         try:

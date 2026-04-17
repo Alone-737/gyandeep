@@ -12,18 +12,27 @@ def extract_pdf_text(
     output_path: str | Path | None = None,
     max_workers: int | None = None,
 ) -> str:
+    pdf_path = Path(pdf_path)
     pdf = pymupdf.open(str(pdf_path))
-    total_pages = pdf.page_count
-    pages = list(pdf)
+    try:
+        total_pages = pdf.page_count
+    finally:
+        pdf.close()
 
-    def _extract_page(args: tuple[int, pymupdf.Page]) -> tuple[int, str]:
-        idx, page = args
+    def _extract_page(idx: int) -> tuple[int, str]:
+        # Open the document in each worker to avoid sharing page/document state across threads.
+        local_pdf = pymupdf.open(str(pdf_path))
+        try:
+            page = local_pdf.load_page(idx)
+            text = page.get_textpage_ocr().extractText()
+        finally:
+            local_pdf.close()
         print(f"On page: {idx + 1} | {round(((idx + 1) / total_pages) * 100)}%")
-        return idx, page.get_textpage_ocr().extractText()
+        return idx, text
 
     results: list[tuple[int, str]] = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {pool.submit(_extract_page, (i, p)): i for i, p in enumerate(pages)}
+        futures = {pool.submit(_extract_page, i): i for i in range(total_pages)}
         for future in as_completed(futures):
             results.append(future.result())
 
@@ -52,4 +61,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
